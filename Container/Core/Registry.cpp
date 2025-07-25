@@ -16,6 +16,12 @@ namespace Registry {
             std::cerr << "Failed to spoof user info." << std::endl;
         }
 
+        /*
+        if (!HardwareInfo()) {
+            std::cerr << "Failed to spoof hardware info." << std::endl;
+        }
+        */
+
         if (!EDID()) {
             std::cerr << "Failed to spoof EDID." << std::endl;
         }
@@ -47,7 +53,7 @@ namespace Registry {
         INIT_OBJECT_ATTRIBUTES(objAttr, uStr);
 
         HANDLE hKey = nullptr;
-        auto ntOpenKey = Services::GetNtOpenKey();
+        auto ntOpenKey = Services::SeOpenKey();
         if (!ntOpenKey || ntOpenKey(&hKey, KEY_SET_VALUE, &objAttr) != STATUS_SUCCESS) {
             std::wcerr << L"Failed to open MachineGUID key (error: " << GetLastError() << L")." << std::endl;
             return false;
@@ -62,22 +68,25 @@ namespace Registry {
             ntSetValueKey(hKey, &valueName, 0, REG_SZ, newGUID.c_str(),
                 static_cast<ULONG>((newGUID.size() + 1) * sizeof(wchar_t))) != STATUS_SUCCESS) {
             std::wcerr << L"Failed to set MachineGUID value (error: " << GetLastError() << L")." << std::endl;
-            Services::GetNtClose()(hKey);
+            Services::SeClose()(hKey);
             return false;
         }
 
         std::wcout << L"Spoofed -> MachineGUID, new GUID -> " << newGUID << std::endl;
-        Services::GetNtClose()(hKey);
+        Services::SeClose()(hKey);
         return true;
     }
 
     bool RegSpoofer::Users() {
-        const std::vector<std::tuple<std::wstring, std::wstring, std::wstring>> userInfo = {
-            {L"\\Registry\\Machine\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion", L"RegisteredOwner", Services::genRand()},
-            {L"\\Registry\\Machine\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion", L"LastLoggedOnUser", Services::genRand()}
+        std::wstring spoofedUser = Services::genUsers();
+
+        const std::vector<std::tuple<std::wstring, std::wstring>> userInfo = {
+            {L"\\Registry\\Machine\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion", L"RegisteredOwner"},
+            {L"\\Registry\\Machine\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion", L"LastLoggedOnUser"},
+            {L"\\Registry\\Machine\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", L"DisplayName"}
         };
 
-        for (const auto& [regPath, valueName, newValue] : userInfo) {
+        for (const auto& [regPath, valueName] : userInfo) {
             UNICODE_STRING uStr, valueNameStr;
             OBJECT_ATTRIBUTES objAttr;
 
@@ -85,7 +94,52 @@ namespace Registry {
             INIT_OBJECT_ATTRIBUTES(objAttr, uStr);
 
             HANDLE hKey = nullptr;
-            auto ntOpenKey = Services::GetNtOpenKey();
+            auto ntOpenKey = Services::SeOpenKey();
+            if (!ntOpenKey || ntOpenKey(&hKey, KEY_SET_VALUE, &objAttr) != STATUS_SUCCESS) {
+                std::wcerr << L"Failed to open key: " << regPath << L" (error: " << GetLastError() << L")." << std::endl;
+                return false;
+            }
+
+            INIT_UNICODE_STRING(valueNameStr, valueName);
+
+            auto ntSetValueKey = Services::GetNtSetValueKey();
+            if (!ntSetValueKey ||
+                ntSetValueKey(hKey, &valueNameStr, 0, REG_SZ, spoofedUser.c_str(),
+                    static_cast<ULONG>((spoofedUser.size() + 1) * sizeof(wchar_t))) != STATUS_SUCCESS) {
+                std::wcerr << L"Failed to set value: " << valueName << L" (error: " << GetLastError() << L")." << std::endl;
+                Services::SeClose()(hKey);
+                return false;
+            }
+
+            Services::SeClose()(hKey);
+            std::wcout << L"Spoofed -> " << valueName << L". New value -> " << spoofedUser << std::endl;
+        }
+
+        return true;
+    }
+
+
+    /*
+    * SYNZ & WAVE refuse to update their HWID authentication systems (even tho they conflict with Hyperion's) so this'll have to go
+    /
+
+    bool RegSpoofer::HardwareInfo() {
+        const std::vector<std::tuple<std::wstring, std::wstring, std::wstring>> hardwareInfo = {
+            {L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS", L"BaseBoardManufacturer", Services::genBaseBoardManufacturer()},
+            {L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS", L"SystemManufacturer", Services::genSystemManufacturer()},
+            {L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS", L"BIOSVersion", Services::genBIOSVersion()},
+            {L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS", L"BIOSReleaseDate", Services::genBIOSReleaseDate()}
+        };
+
+        for (const auto& [regPath, valueName, newValue] : hardwareInfo) {
+            UNICODE_STRING uStr, valueNameStr;
+            OBJECT_ATTRIBUTES objAttr;
+
+            INIT_UNICODE_STRING(uStr, regPath);
+            INIT_OBJECT_ATTRIBUTES(objAttr, uStr);
+
+            HANDLE hKey = nullptr;
+            auto ntOpenKey = Services::SeOpenKey();
             if (!ntOpenKey || ntOpenKey(&hKey, KEY_SET_VALUE, &objAttr) != STATUS_SUCCESS) {
                 std::wcerr << L"Failed to open key: " << regPath << L" (error: " << GetLastError() << L")." << std::endl;
                 return false;
@@ -98,16 +152,17 @@ namespace Registry {
                 ntSetValueKey(hKey, &valueNameStr, 0, REG_SZ, newValue.c_str(),
                     static_cast<ULONG>((newValue.size() + 1) * sizeof(wchar_t))) != STATUS_SUCCESS) {
                 std::wcerr << L"Failed to set value: " << valueName << L" (error: " << GetLastError() << L")." << std::endl;
-                Services::GetNtClose()(hKey);
+                Services::SeClose()(hKey);
                 return false;
             }
 
-            Services::GetNtClose()(hKey);
+            Services::SeClose()(hKey);
             std::wcout << L"Spoofed -> " << valueName << L". New value -> " << newValue << std::endl;
         }
 
         return true;
     }
+    */
 
     bool RegSpoofer::EDID() {
         const std::wstring displayKeyPath = L"SYSTEM\\CurrentControlSet\\Enum\\DISPLAY";

@@ -1,32 +1,24 @@
-#pragma once
+#ifndef FS_CLEANER_H
+#define FS_CLEANER_H
 
-#include "../Services/Services.hpp"
+#include <Windows.h>
 
-#include <iostream>
-#include <string>
-#include <fstream>
-#include <regex>
-#include <sstream>
-#include <thread>
-#include <vector>
 #include <filesystem>
-#include <cstdlib>
+#include <regex>
+#include <fstream>
+#include <iostream>
+#include <thread>
 #include <chrono>
-
-namespace fs = std::filesystem;
+#include <atomic>
 
 class FsCleaner {
 public:
     static void run();
+    static void Install();
 
 private:
-    static bool delLogs();
-    static bool replaceCfg();
-    static bool cleanVers();
-
-    static bool process(const fs::path& filePath);
-    static std::string updCfg(const std::string& content);
-    static std::string getEnv(const char* var);
-    template <typename Func>
-    static void retry(Func func, const fs::path& path);
+    static void RmvReferents(const std::filesystem::path& filePath, const std::wstring& itemClass);
+    static void CleanRbx();
 };
+
+#endif
