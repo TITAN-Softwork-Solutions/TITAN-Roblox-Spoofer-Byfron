@@ -24,10 +24,12 @@ namespace MAC {
         static void run();
 
     private:
+        static std::wstring GetCurrentSSID();
+        static void bounceAdapter(const std::wstring& adapterName);
         static std::vector<std::wstring> getAdapters();
         static std::optional<std::wstring> resAdapter(const std::wstring& adapterName);
         static std::wstring getAdapterRegPath(const std::wstring& adapterGUID);
-
         static void spoofMac();
+        static std::wstring trim(const std::wstring& s);
     };
 }

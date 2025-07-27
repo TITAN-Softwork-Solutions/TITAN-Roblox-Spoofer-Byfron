@@ -23,7 +23,7 @@
 #include <iomanip>
 #include <array>
 
-namespace Services {
+namespace TsService {
 
     // CONVERSION
 
@@ -394,7 +394,7 @@ namespace Services {
         if (!SetConsoleTitleW(rndName.c_str())) {}
     }
 
-    inline void KillRbx() {
+    inline void __TerminateRoblox() {
         SetWindow();
         EnableDebugPrivilege();
 

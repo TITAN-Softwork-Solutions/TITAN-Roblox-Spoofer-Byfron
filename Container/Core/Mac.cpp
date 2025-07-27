@@ -1,172 +1,167 @@
-#include "../Header/Mac.h"
+﻿#include "../Header/Mac.h"
+#include "../Services/Services.hpp"
 
 namespace MAC {
 
-    std::wstring GetCurrentSSID() {
+    std::wstring MacSpoofer::trim(const std::wstring& s) {
+        const wchar_t* ws = L" \t\r\n";
+        auto start = s.find_first_not_of(ws);
+        if (start == std::wstring::npos) return {};
+        auto end = s.find_last_not_of(ws);
+        return s.substr(start, end - start + 1);
+    }
+
+    std::wstring MacSpoofer::GetCurrentSSID() {
         FILE* pipe = _wpopen(L"netsh wlan show interfaces", L"r");
-        if (!pipe) return L"";
+        if (!pipe) return {};
 
         wchar_t buffer[512];
         std::wstring output;
-
-        while (fgetws(buffer, sizeof(buffer) / sizeof(wchar_t), pipe)) {
+        while (fgetws(buffer, _countof(buffer), pipe)) {
             output += buffer;
         }
-
         _pclose(pipe);
 
-        size_t pos = output.find(L"SSID                   : ");
-        if (pos != std::wstring::npos) {
-            size_t start = pos + wcslen(L"SSID                   : ");
-            size_t end = output.find(L"\n", start);
-            if (end != std::wstring::npos)
-                return output.substr(start, end - start);
-        }
+        const std::wstring marker = L"SSID                   : ";
+        auto pos = output.find(marker);
+        if (pos == std::wstring::npos) return {};
 
-        return L"";
+        auto start = pos + marker.size();
+        auto end = output.find(L'\n', start);
+        auto ssid = (end == std::wstring::npos)
+            ? output.substr(start)
+            : output.substr(start, end - start);
+
+        return trim(ssid);
     }
 
-    void bounceAdapter(const std::wstring& adapterName) {
-        std::wstring disableCmd = L"netsh interface set interface name=\"" + adapterName + L"\" admin=disable";
-        std::wstring enableCmd = L"netsh interface set interface name=\"" + adapterName + L"\" admin=enable";
-
-        _wsystem((disableCmd + L" >nul 2>&1").c_str());
+    void MacSpoofer::bounceAdapter(const std::wstring& adapterName) {
+        std::wstring cmdBase = L"netsh interface set interface name=\"" + adapterName + L"\" admin=";
+        _wsystem((cmdBase + L"disable >nul 2>&1").c_str());
         Sleep(1000);
-        _wsystem((enableCmd + L" >nul 2>&1").c_str());
+        _wsystem((cmdBase + L"enable  >nul 2>&1").c_str());
         Sleep(2000);
 
-        if (adapterName.find(L"Wi-Fi") != std::wstring::npos || adapterName.find(L"Wireless") != std::wstring::npos) {
-            std::wstring ssid = GetCurrentSSID();
-            if (!ssid.empty()) {
-                std::wstring connectCmd = L"netsh wlan disconnect >nul 2>&1 && netsh wlan connect name=\"" + ssid + L"\" >nul 2>&1";
-                _wsystem(connectCmd.c_str());
+        // Reconnect Wi‑Fi to same SSID
+        if (adapterName.find(L"Wi-Fi") != std::wstring::npos ||
+            adapterName.find(L"Wireless") != std::wstring::npos)
+        {
+            if (auto ssid = GetCurrentSSID(); !ssid.empty()) {
+                std::wstring reconnect = L"netsh wlan disconnect >nul 2>&1 && "
+                    L"netsh wlan connect name=\"" + ssid + L"\" >nul 2>&1";
+                _wsystem(reconnect.c_str());
             }
         }
     }
 
-    void MacSpoofer::run() {
-        Services::SectHeader("MAC Spoofing", 196);
-        spoofMac();
-    }
-
     std::vector<std::wstring> MacSpoofer::getAdapters() {
-        ULONG bufferSize = 0;
-        GetAdaptersInfo(nullptr, &bufferSize);
-        std::vector<BYTE> buffer(bufferSize);
+        ULONG bufLen = 0;
+        GetAdaptersInfo(nullptr, &bufLen);
+        if (bufLen == 0) return {};
 
-        auto pAdapterInfo = reinterpret_cast<PIP_ADAPTER_INFO>(buffer.data());
-        if (GetAdaptersInfo(pAdapterInfo, &bufferSize) != ERROR_SUCCESS) {
-            return {};
-        }
+        std::vector<BYTE> buf(bufLen);
+        auto pInfo = reinterpret_cast<PIP_ADAPTER_INFO>(buf.data());
+        if (GetAdaptersInfo(pInfo, &bufLen) != NO_ERROR) return {};
 
         std::vector<std::wstring> adapters;
-        adapters.reserve(16); // if u have more than 16 adapters im concerned
-        for (auto pAdapter = pAdapterInfo; pAdapter; pAdapter = pAdapter->Next) {
-            adapters.emplace_back(pAdapter->Description, pAdapter->Description + strlen(pAdapter->Description));
+        for (auto p = pInfo; p; p = p->Next) {
+            adapters.emplace_back(
+                p->Description,
+                p->Description + strlen(p->Description)
+            );
         }
         return adapters;
     }
 
     std::optional<std::wstring> MacSpoofer::resAdapter(const std::wstring& adapterName) {
-
         COM::COMInitializer comInit;
-
         IWbemLocator* pLoc = nullptr;
         IWbemServices* pSvc = nullptr;
 
-        HRESULT hr = CoCreateInstance(CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER,
-            IID_IWbemLocator, reinterpret_cast<LPVOID*>(&pLoc));
-        if (FAILED(hr)) return std::nullopt;
+        if (FAILED(CoCreateInstance(
+            CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER,
+            IID_IWbemLocator, reinterpret_cast<LPVOID*>(&pLoc))))
+            return {};
 
-        BSTR namespacePath = SysAllocString(L"ROOT\\CIMV2");
-        hr = pLoc->ConnectServer(namespacePath, nullptr, nullptr, 0, 0, nullptr, nullptr, &pSvc);
-        SysFreeString(namespacePath);
-        if (FAILED(hr)) {
+        _bstr_t ns(L"ROOT\\CIMV2");
+        if (FAILED(pLoc->ConnectServer(
+            ns, nullptr, nullptr, 0, 0, nullptr, nullptr, &pSvc)))
+        {
             pLoc->Release();
-            return std::nullopt;
+            return {};
         }
 
-        IEnumWbemClassObject* pEnumerator = nullptr;
-        std::wstring query = L"SELECT * FROM Win32_NetworkAdapter WHERE Name = '" + adapterName + L"'";
-        BSTR queryLang = SysAllocString(L"WQL");
-        BSTR queryString = SysAllocString(query.c_str());
-
-        hr = pSvc->ExecQuery(queryLang, queryString,
+        std::wstring q = L"SELECT * FROM Win32_NetworkAdapter WHERE Name = '" +
+            adapterName + L"'";
+        IEnumWbemClassObject* pEnum = nullptr;
+        if (FAILED(pSvc->ExecQuery(
+            _bstr_t(L"WQL"), _bstr_t(q.c_str()),
             WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
-            nullptr, &pEnumerator);
-
-        SysFreeString(queryLang);
-        SysFreeString(queryString);
-
-        if (FAILED(hr)) {
+            nullptr, &pEnum)))
+        {
             pSvc->Release();
             pLoc->Release();
-            return std::nullopt;
+            return {};
         }
 
-        IWbemClassObject* pAdapter = nullptr;
-        ULONG uReturn = 0;
-        std::optional<std::wstring> result;
-
-        HRESULT nextRes = pEnumerator->Next(WBEM_INFINITE, 1, &pAdapter, &uReturn);
-        if (SUCCEEDED(nextRes) && uReturn != 0) {
-            VARIANT vtGUID;
-            VariantInit(&vtGUID);
-            if (SUCCEEDED(pAdapter->Get(L"GUID", 0, &vtGUID, nullptr, nullptr)) && vtGUID.bstrVal != nullptr) {
-                result = vtGUID.bstrVal;
-                VariantClear(&vtGUID);
+        IWbemClassObject* pObj = nullptr;
+        ULONG ret = 0;
+        std::optional<std::wstring> guid;
+        if (SUCCEEDED(pEnum->Next(WBEM_INFINITE, 1, &pObj, &ret)) && ret) {
+            VARIANT vt;
+            VariantInit(&vt);
+            if (SUCCEEDED(pObj->Get(L"GUID", 0, &vt, nullptr, nullptr)) &&
+                vt.vt == VT_BSTR)
+            {
+                guid = std::wstring(vt.bstrVal);
             }
-            pAdapter->Release();
+            VariantClear(&vt);
+            pObj->Release();
         }
 
-        pEnumerator->Release();
+        pEnum->Release();
         pSvc->Release();
         pLoc->Release();
-
-        return result;
+        return guid;
     }
 
     std::wstring MacSpoofer::getAdapterRegPath(const std::wstring& adapterGUID) {
-        static const std::wstring basePath = L"SYSTEM\\CurrentControlSet\\Control\\Class\\{4D36E972-E325-11CE-BFC1-08002BE10318}";
+        static const std::wstring base =
+            L"SYSTEM\\CurrentControlSet\\Control\\Class\\"
+            L"{4D36E972-E325-11CE-BFC1-08002BE10318}";
         HKEY hKey;
+        if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, base.c_str(),
+            0, KEY_READ, &hKey) != ERROR_SUCCESS)
+            return {};
 
-        if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, basePath.c_str(), 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
-            return L"";
-        }
-
-        DWORD index = 0;
-        WCHAR subKeyName[256];
-        DWORD subKeyLen = 256;
-
-        LONG result;
-        while ((result = RegEnumKeyEx(hKey, index, subKeyName, &subKeyLen, nullptr, nullptr, nullptr, nullptr)) != ERROR_NO_MORE_ITEMS) {
-            if (result != ERROR_SUCCESS) {
-                subKeyLen = 256;
-                index++;
-                continue;
-            }
-
-            std::wstring subKeyPath = basePath + L"\\" + subKeyName;
-            HKEY subKey;
-            if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, subKeyPath.c_str(), 0, KEY_READ, &subKey) == ERROR_SUCCESS) {
-                WCHAR guidValue[256];
-                DWORD guidLen = sizeof(guidValue);
-                if (RegQueryValueEx(subKey, L"NetCfgInstanceId", nullptr, nullptr,
-                    reinterpret_cast<LPBYTE>(guidValue), &guidLen) == ERROR_SUCCESS) {
-                    if (adapterGUID == guidValue) {
-                        RegCloseKey(subKey);
-                        RegCloseKey(hKey);
-                        return subKeyPath;
-                    }
+        WCHAR name[256];
+        DWORD idx = 0, nameLen = _countof(name);
+        while (RegEnumKeyEx(hKey, idx++, name, &nameLen,
+            nullptr, nullptr, nullptr, nullptr) != ERROR_NO_MORE_ITEMS)
+        {
+            std::wstring path = base + L"\\" + name;
+            HKEY sub;
+            if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, path.c_str(),
+                0, KEY_READ, &sub) == ERROR_SUCCESS)
+            {
+                WCHAR guidVal[256];
+                DWORD guidLen = sizeof(guidVal);
+                if (RegQueryValueEx(sub, L"NetCfgInstanceId",
+                    nullptr, nullptr,
+                    reinterpret_cast<BYTE*>(guidVal),
+                    &guidLen) == ERROR_SUCCESS &&
+                    adapterGUID == guidVal)
+                {
+                    RegCloseKey(sub);
+                    RegCloseKey(hKey);
+                    return path;
                 }
-                RegCloseKey(subKey);
+                RegCloseKey(sub);
             }
-            subKeyLen = 256;
-            index++;
+            nameLen = _countof(name);
         }
-
         RegCloseKey(hKey);
-        return L"";
+        return {};
     }
 
     void MacSpoofer::spoofMac() {
@@ -174,45 +169,70 @@ namespace MAC {
         if (adapters.empty()) return;
 
         std::mutex outputMutex;
-        std::vector<std::thread> spoofThreads;
+        std::vector<std::thread> threads;
 
-        for (const auto& adapter : adapters) {
-            spoofThreads.emplace_back([&, adapter]() {
+        for (auto& adapter : adapters) {
+            threads.emplace_back([&, adapter]() {
                 COM::COMInitializer comInit;
-                auto adapterGUID = resAdapter(adapter);
-                if (!adapterGUID) return;
+                auto guid = resAdapter(adapter);
+                if (!guid) return;
 
-                auto regPath = getAdapterRegPath(*adapterGUID);
+                auto regPath = getAdapterRegPath(*guid);
                 if (regPath.empty()) return;
 
-                auto newMac = Services::genMac();
-                std::wstring macAddress(newMac.begin(), newMac.end());
+                auto newMac = TsService::genMac();
+                std::wstring macStr(newMac.begin(), newMac.end());
+
+                // Write to registry
+                HKEY hKey;
+                if (RegOpenKeyEx(HKEY_LOCAL_MACHINE,
+                    regPath.c_str(),
+                    0, KEY_SET_VALUE, &hKey) == ERROR_SUCCESS)
+                {
+                    RegSetValueEx(hKey, L"NetworkAddress",
+                        0, REG_SZ,
+                        reinterpret_cast<const BYTE*>(macStr.c_str()),
+                        static_cast<DWORD>((macStr.size() + 1) * sizeof(wchar_t)));
+                    RegCloseKey(hKey);
+
+                    // Optional verification
+                    HKEY hVerify;
+                    if (RegOpenKeyEx(HKEY_LOCAL_MACHINE,
+                        regPath.c_str(),
+                        0, KEY_READ, &hVerify) == ERROR_SUCCESS)
+                    {
+                        WCHAR check[256]; DWORD len = sizeof(check);
+                        RegQueryValueEx(hVerify, L"NetworkAddress",
+                            nullptr, nullptr,
+                            reinterpret_cast<BYTE*>(check), &len);
+                        RegCloseKey(hVerify);
+
+                        if (macStr != check) {
+                            std::lock_guard<std::mutex> lk(outputMutex);
+                            std::wcerr << L"[!] Verification failed for " << adapter << L"\n";
+                            return;
+                        }
+                    }
+                }
 
                 {
-                    std::lock_guard<std::mutex> lock(outputMutex);
-                    std::wcout << L"Spoofed -> " << adapter << L", New MAC -> " << macAddress << L"\n";
+                    std::lock_guard<std::mutex> lk(outputMutex);
+                    std::wcout << L"Spoofed -> " << adapter
+                        << L", New MAC -> " << macStr << L"\n";
                 }
 
-                HKEY hKey;
-                if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, regPath.c_str(), 0, KEY_SET_VALUE, &hKey) == ERROR_SUCCESS) {
-                    RegSetValueEx(hKey, L"NetworkAddress", 0, REG_SZ,
-                        reinterpret_cast<const BYTE*>(macAddress.c_str()),
-                        static_cast<DWORD>((macAddress.size() + 1) * sizeof(wchar_t)));
-                    RegCloseKey(hKey);
-                }
-
-                std::thread bounceThread([adapter]() {
-                    bounceAdapter(adapter);
-                    });
-
-                bounceThread.detach();
+                // Bounce adapter (in its own thread)
+                std::thread(&MacSpoofer::bounceAdapter, adapter).detach();
                 });
         }
 
-        for (auto& t : spoofThreads) {
-            if (t.joinable())
-                t.join();
-
+        for (auto& t : threads) {
+            if (t.joinable()) t.join();
         }
     }
-}
+
+    void MacSpoofer::run() {
+        TsService::SectHeader("MAC Spoofing", 196);
+        spoofMac();
+    }
+} // namespace MAC

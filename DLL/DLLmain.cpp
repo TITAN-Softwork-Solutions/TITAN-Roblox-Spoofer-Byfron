@@ -1,6 +1,3 @@
-// TITAN Spoofer V1.4
-// Licensed under CC BY-NC-ND 4.0
-
 #include <Windows.h>
 #include <iostream>
 
@@ -11,15 +8,20 @@
 #include "../Container/Header/WMI.h"
 
 extern "C" __declspec(dllexport) void RunSpoofer() {
-    Services::TITAN();
-    Services::KillRbx();
+    TsService::TITAN();
+    TsService::__TerminateRoblox();
 
-    FsCleaner::run();
+
+    FsCleaner::__RemoveTraces();
     MAC::MacSpoofer::run();
     Registry::RegSpoofer::run();
     WMI::WmiSpoofer::run();
-    FsCleaner::Install();
+    FsCleaner::__ReInstall();
 
+}
+
+extern "C" __declspec(dllexport) void KillRoblox() {
+    TsService::__TerminateRoblox();
 }
 
 extern "C" __declspec(dllexport) void SpoofMAC() {
@@ -27,8 +29,8 @@ extern "C" __declspec(dllexport) void SpoofMAC() {
 }
 
 extern "C" __declspec(dllexport) void CleanFS() {
-    FsCleaner::run();
-    FsCleaner::Install();
+    FsCleaner::__RemoveTraces();
+    FsCleaner::__ReInstall();
 }
 
 extern "C" __declspec(dllexport) void SpoofRegistry() {

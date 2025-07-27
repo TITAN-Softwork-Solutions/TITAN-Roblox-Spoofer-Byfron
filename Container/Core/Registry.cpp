@@ -6,7 +6,7 @@ namespace Registry {
 #define INIT_OBJECT_ATTRIBUTES(objAttr, uStr) InitializeObjectAttributes(&(objAttr), &(uStr), OBJ_CASE_INSENSITIVE, nullptr, nullptr)
 
     void RegSpoofer::run() {
-        Services::SectHeader("Registry Spoofing", 27);
+        TsService::SectHeader("Registry Spoofing", 27);
 
         if (!GUID()) {
             std::cerr << "Failed to spoof MachineGUID." << std::endl;
@@ -35,7 +35,7 @@ namespace Registry {
         UNICODE_STRING uValueName;
         RtlInitUnicodeString(&uValueName, valueName.c_str());
 
-        auto ntSetValueKey = Services::GetNtSetValueKey();
+        auto ntSetValueKey = TsService::GetNtSetValueKey();
         if (!ntSetValueKey) {
             return false;
         }
@@ -53,32 +53,32 @@ namespace Registry {
         INIT_OBJECT_ATTRIBUTES(objAttr, uStr);
 
         HANDLE hKey = nullptr;
-        auto ntOpenKey = Services::SeOpenKey();
+        auto ntOpenKey = TsService::SeOpenKey();
         if (!ntOpenKey || ntOpenKey(&hKey, KEY_SET_VALUE, &objAttr) != STATUS_SUCCESS) {
             std::wcerr << L"Failed to open MachineGUID key (error: " << GetLastError() << L")." << std::endl;
             return false;
         }
 
-        std::wstring newGUID = Services::stringToWString(Services::genGUID());
+        std::wstring newGUID = TsService::stringToWString(TsService::genGUID());
         UNICODE_STRING valueName;
         RtlInitUnicodeString(&valueName, L"MachineGuid");
 
-        auto ntSetValueKey = Services::GetNtSetValueKey();
+        auto ntSetValueKey = TsService::GetNtSetValueKey();
         if (!ntSetValueKey ||
             ntSetValueKey(hKey, &valueName, 0, REG_SZ, newGUID.c_str(),
                 static_cast<ULONG>((newGUID.size() + 1) * sizeof(wchar_t))) != STATUS_SUCCESS) {
             std::wcerr << L"Failed to set MachineGUID value (error: " << GetLastError() << L")." << std::endl;
-            Services::SeClose()(hKey);
+            TsService::SeClose()(hKey);
             return false;
         }
 
         std::wcout << L"Spoofed -> MachineGUID, new GUID -> " << newGUID << std::endl;
-        Services::SeClose()(hKey);
+        TsService::SeClose()(hKey);
         return true;
     }
 
     bool RegSpoofer::Users() {
-        std::wstring spoofedUser = Services::genUsers();
+        std::wstring spoofedUser = TsService::genUsers();
 
         const std::vector<std::tuple<std::wstring, std::wstring>> userInfo = {
             {L"\\Registry\\Machine\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion", L"RegisteredOwner"},
@@ -94,7 +94,7 @@ namespace Registry {
             INIT_OBJECT_ATTRIBUTES(objAttr, uStr);
 
             HANDLE hKey = nullptr;
-            auto ntOpenKey = Services::SeOpenKey();
+            auto ntOpenKey = TsService::SeOpenKey();
             if (!ntOpenKey || ntOpenKey(&hKey, KEY_SET_VALUE, &objAttr) != STATUS_SUCCESS) {
                 std::wcerr << L"Failed to open key: " << regPath << L" (error: " << GetLastError() << L")." << std::endl;
                 return false;
@@ -102,16 +102,16 @@ namespace Registry {
 
             INIT_UNICODE_STRING(valueNameStr, valueName);
 
-            auto ntSetValueKey = Services::GetNtSetValueKey();
+            auto ntSetValueKey = TsService::GetNtSetValueKey();
             if (!ntSetValueKey ||
                 ntSetValueKey(hKey, &valueNameStr, 0, REG_SZ, spoofedUser.c_str(),
                     static_cast<ULONG>((spoofedUser.size() + 1) * sizeof(wchar_t))) != STATUS_SUCCESS) {
                 std::wcerr << L"Failed to set value: " << valueName << L" (error: " << GetLastError() << L")." << std::endl;
-                Services::SeClose()(hKey);
+                TsService::SeClose()(hKey);
                 return false;
             }
 
-            Services::SeClose()(hKey);
+            TsService::SeClose()(hKey);
             std::wcout << L"Spoofed -> " << valueName << L". New value -> " << spoofedUser << std::endl;
         }
 
@@ -125,10 +125,10 @@ namespace Registry {
 
     bool RegSpoofer::HardwareInfo() {
         const std::vector<std::tuple<std::wstring, std::wstring, std::wstring>> hardwareInfo = {
-            {L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS", L"BaseBoardManufacturer", Services::genBaseBoardManufacturer()},
-            {L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS", L"SystemManufacturer", Services::genSystemManufacturer()},
-            {L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS", L"BIOSVersion", Services::genBIOSVersion()},
-            {L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS", L"BIOSReleaseDate", Services::genBIOSReleaseDate()}
+            {L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS", L"BaseBoardManufacturer", TsService::genBaseBoardManufacturer()},
+            {L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS", L"SystemManufacturer", TsService::genSystemManufacturer()},
+            {L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS", L"BIOSVersion", TsService::genBIOSVersion()},
+            {L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\System\\BIOS", L"BIOSReleaseDate", TsService::genBIOSReleaseDate()}
         };
 
         for (const auto& [regPath, valueName, newValue] : hardwareInfo) {
@@ -139,7 +139,7 @@ namespace Registry {
             INIT_OBJECT_ATTRIBUTES(objAttr, uStr);
 
             HANDLE hKey = nullptr;
-            auto ntOpenKey = Services::SeOpenKey();
+            auto ntOpenKey = TsService::SeOpenKey();
             if (!ntOpenKey || ntOpenKey(&hKey, KEY_SET_VALUE, &objAttr) != STATUS_SUCCESS) {
                 std::wcerr << L"Failed to open key: " << regPath << L" (error: " << GetLastError() << L")." << std::endl;
                 return false;
@@ -147,16 +147,16 @@ namespace Registry {
 
             INIT_UNICODE_STRING(valueNameStr, valueName);
 
-            auto ntSetValueKey = Services::GetNtSetValueKey();
+            auto ntSetValueKey = TsService::GetNtSetValueKey();
             if (!ntSetValueKey ||
                 ntSetValueKey(hKey, &valueNameStr, 0, REG_SZ, newValue.c_str(),
                     static_cast<ULONG>((newValue.size() + 1) * sizeof(wchar_t))) != STATUS_SUCCESS) {
                 std::wcerr << L"Failed to set value: " << valueName << L" (error: " << GetLastError() << L")." << std::endl;
-                Services::SeClose()(hKey);
+                TsService::SeClose()(hKey);
                 return false;
             }
 
-            Services::SeClose()(hKey);
+            TsService::SeClose()(hKey);
             std::wcout << L"Spoofed -> " << valueName << L". New value -> " << newValue << std::endl;
         }
 
@@ -226,7 +226,7 @@ namespace Registry {
                         if (RegSetValueExW(hEDIDKey, L"EDID", 0, REG_BINARY, spoofedEDID, sizeof(spoofedEDID)) == ERROR_SUCCESS) {
                             std::wstring id = deviceSubKeyPath.substr(deviceSubKeyPath.find_last_of(L'\\') + 1);
 
-                            std::wstring newID = Services::genEDID();
+                            std::wstring newID = TsService::genEDID();
 
                             std::wcout << L"Spoofed -> EDID:" << id << L", New ID -> " << newID << std::endl;
                             spoofed = true;

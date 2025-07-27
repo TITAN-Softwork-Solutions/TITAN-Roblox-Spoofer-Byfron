@@ -24,4 +24,9 @@
       <Filter>Core</Filter>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include=".RC">
+      <Filter>Core</Filter>
+    </ResourceCompile>
+  </ItemGroup>
 </Project>

@@ -150,6 +150,9 @@
     <ClCompile Include="..\Container\Core\WMI.cpp" />
     <ClCompile Include="DLLmain.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include=".RC" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

@@ -6,15 +6,6 @@
 #include "Container/Header/Registry.h"
 #include "Container/Header/WMI.h"
 
-
-/**
- * runs the `runTasks` function in a separate thread
- * this ensures that logs for the main application are not suppressed if logs r set to false
- *
- * @param logs - boolean indicating whether logs should be enabled (true) or suppressed (false)
- * @return a `std::thread` object that runs `runTasks` in the background
- */
-
 namespace TitanSpoofer {
 
     inline void noOut() {
@@ -31,27 +22,27 @@ namespace TitanSpoofer {
                 noOut();
             }
 
-            Services::KillRbx(); // this will obviously... kill roblox
-            FsCleaner::run();   // it ties in with the file cleaner, if u dont want roblox killed then dont run this
+            TsService::__TerminateRoblox(); // Kills RobloxPlayerBeta/RobloxCrashHandler/Bloxstrap/RobloxStudioLauncher/RobloxStudio
+            FsCleaner::__RemoveTraces();   // Deletes Roblox-related & Roblox files from checked directories
 
-            // these do not require roblox to be closed, but would b good
-            MAC::MacSpoofer::run();
-            Registry::RegSpoofer::run();
-            WMI::WmiSpoofer::run();
-            FsCleaner::Install();
+            MAC::MacSpoofer::run(); // Spoofs MAC adapters
+            Registry::RegSpoofer::run(); // Spoofs registry hive values
+            WMI::WmiSpoofer::run(); // Spoofs WMI values
+
+            FsCleaner::__ReInstall(); // Reinstalls Roblox (net-less, via Bloxstrap/Fishstrap)
 
             if (!logs) {
                 reOut();
             }
 
-            return true; // success
+            return true; // SUCCESS
         }
         catch (const std::exception& ex) {
             if (!logs) {
                 reOut();
             }
-            std::cerr << "Titan Spoofer error -> " << ex.what() << std::endl;
-            return false; // failure
+            std::cerr << "TS err -> " << ex.what() << std::endl;
+            return false; // FAILURE
         }
     }
 

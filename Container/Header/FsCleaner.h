@@ -1,24 +1,15 @@
-#ifndef FS_CLEANER_H
-#define FS_CLEANER_H
+#pragma once
 
 #include <Windows.h>
 
 #include <filesystem>
+#include <optional>
 #include <regex>
 #include <fstream>
-#include <iostream>
 #include <thread>
-#include <chrono>
 #include <atomic>
 
-class FsCleaner {
-public:
-    static void run();
-    static void Install();
-
-private:
-    static void RmvReferents(const std::filesystem::path& filePath, const std::wstring& itemClass);
-    static void CleanRbx();
-};
-
-#endif
+namespace FsCleaner {
+    void __RemoveTraces();
+    void __ReInstall();
+}

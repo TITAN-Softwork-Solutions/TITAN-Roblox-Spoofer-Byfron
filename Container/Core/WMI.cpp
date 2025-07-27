@@ -3,7 +3,7 @@
 namespace WMI {
 
     void WmiSpoofer::run() {
-        Services::SectHeader("WMI Spoofing", 90);
+        TsService::SectHeader("WMI Spoofing", 90);
 
         if (!SystemProduct()) {
             std::cerr << "Win32_ComputerSystemProduct Spoof failed" << std::endl;
@@ -47,7 +47,7 @@ namespace WMI {
         IWbemClassObject* pObject = nullptr;
         ULONG uReturn = 0;
 
-        std::wstring newUUID = Services::stringToWString(Services::genGUID());
+        std::wstring newUUID = TsService::stringToWString(TsService::genGUID());
 
         while (pEnumerator->Next(WBEM_INFINITE, 1, &pObject, &uReturn) == WBEM_S_NO_ERROR) {
             VARIANT varValue;
@@ -108,7 +108,7 @@ namespace WMI {
         IWbemClassObject* pObject = nullptr;
         ULONG uReturn = 0;
 
-        std::wstring newSerial = Services::stringToWString(Services::genSerial());
+        std::wstring newSerial = TsService::stringToWString(TsService::genSerial());
 
         while (pEnumerator->Next(WBEM_INFINITE, 1, &pObject, &uReturn) == WBEM_S_NO_ERROR) {
             VARIANT varValue;
